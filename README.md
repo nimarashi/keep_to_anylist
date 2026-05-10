@@ -21,16 +21,26 @@ Repo'et skal være public for at få ubegrænsede gratis Actions-minutter. Koden
 
 ### 2. Generér et Google Keep master-token
 
-Det her er en engangs-operation. Du skal gøre det lokalt, fordi det kræver interaktiv login.
+Det her er en engangs-operation. Du skal gøre det lokalt, fordi det kræver interaktiv browser-login.
 
-#### Forudsætning: App Password
+**Bemærk:** App Password-flowet virker ikke længere stabilt — Google har strammet sikkerhed. Vi bruger i stedet "alternative flow" hvor du logger ind via browser og henter en cookie ud.
 
-Hvis din Google-konto har 2-step verification (det bør den have), skal du oprette et App Password:
-1. Gå til https://myaccount.google.com/apppasswords
-2. Lav et nyt App Password (navn: "gkeepapi-sync"). Du får en 16-tegns kode.
-3. Brug DEN, ikke dit normale password, i næste skridt.
+#### Browser-skridt (gør dette FØRST)
 
-#### Generér tokenet
+1. Åbn et **privat/incognito-vindue** i din browser.
+2. Gå til https://accounts.google.com/EmbeddedSetup
+3. Log ind med din Google-konto. Klik "I agree".
+4. Ignorer eventuel "Loading..."-skærm — du skal IKKE vente på at den bliver færdig.
+5. Åbn DevTools (F12).
+6. Find cookien `oauth_token` for `accounts.google.com`:
+   - **Chrome/Edge:** Application-fanen → Cookies → accounts.google.com → leder efter `oauth_token`
+   - **Firefox:** Storage-fanen → Cookies → accounts.google.com
+   - **Safari:** Aktivér Develop-menu (Settings → Advanced → "Show features for web developers") → Develop → Show Web Inspector → Storage → Cookies
+7. Copy cookie-værdien (starter typisk med `oauth2_4/`).
+
+cookie'n er kortlivet, så hav scriptet klar i en terminal samtidig.
+
+#### Kør generate-scriptet
 
 ```bash
 cd keep_to_anylist
@@ -40,9 +50,9 @@ pip install gpsoauth
 python generate_master_token.py
 ```
 
-Scriptet beder om din email og App Password (16 tegn) og printer en streng der starter med `aas_et/...`. Tokenet kan også sættes som secret direkte fra scriptets output via gh CLI — se næste skridt.
+Scriptet prompter for din email og oauth_token-cookie-værdien. Det printer en `gh secret set ...`-kommando med master-tokenet — copy-paste den i terminalen for at sætte secret'en.
 
-Hvis du senere oplever at workflow'et fejler med "Google Keep master-token er udløbet", er det bare den her samme proces du kører igen.
+Master-tokens udløber ikke automatisk — kun hvis du skifter Google-password eller eksplicit revoker det. Så denne proces er virkelig en engangs-ting i praksis.
 
 ### 3. Opret GitHub Actions Secrets
 
