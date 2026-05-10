@@ -96,7 +96,7 @@ def main() -> int:
 
     keep = gkeepapi.Keep()
     try:
-        keep.resume(keep_email, keep_token)
+        keep.authenticate(keep_email, keep_token)
     except Exception as e:
         if _looks_like_auth_error(e):
             print(
