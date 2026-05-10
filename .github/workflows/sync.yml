@@ -1,0 +1,36 @@
+name: Sync Keep → AnyList
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-anylist-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          KEEP_EMAIL: ${{ secrets.KEEP_EMAIL }}
+          KEEP_MASTER_TOKEN: ${{ secrets.KEEP_MASTER_TOKEN }}
+          ANYLIST_EMAIL: ${{ secrets.ANYLIST_EMAIL }}
+          ANYLIST_PASSWORD: ${{ secrets.ANYLIST_PASSWORD }}
+          KEEP_NOTE_TITLE: indkøbsliste
+          ANYLIST_LIST_NAME: Indkøb
+        run: python sync.py
