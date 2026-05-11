@@ -131,12 +131,13 @@ def main() -> int:
         )
         return 2
 
-    # 3. Saml ukrydsede items
-    pending = [
-        (item.text.strip(), item)
-        for item in note.items
-        if not item.checked and (item.text or "").strip()
-    ]
+    # 3. Saml ukrydsede items (capitalize første bogstav: "mælk" → "Mælk")
+    pending: list[tuple[str, object]] = []
+    for item in note.items:
+        text = (item.text or "").strip()
+        if not text or item.checked:
+            continue
+        pending.append((text[:1].upper() + text[1:], item))
     if not pending:
         print("Ingen ukrydsede items i Keep-noten. Intet at synke.")
         return 0
