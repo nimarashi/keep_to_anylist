@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import Counter, defaultdict
 from typing import Optional
 
 try:
@@ -70,13 +71,38 @@ def _find_note(keep, title: str):
     return None
 
 
-def _find_list_id(client, list_name: str) -> Optional[str]:
-    """Find AnyList-listens id ud fra dens navn (case-insensitive)."""
+def _find_list(client, list_name: str):
+    """Find AnyList-listen ud fra dens navn (case-insensitive). None hvis ingen match."""
     target = list_name.strip().lower()
     for lst in client.get_lists():
         if (lst.name or "").strip().lower() == target:
-            return lst.id
+            return lst
     return None
+
+
+def _capitalize_first(text: str) -> str:
+    """Stort første bogstav, resten urørt. 'mælk' -> 'Mælk', 'USB-kabel' -> 'USB-kabel'."""
+    if not text:
+        return text
+    return text[:1].upper() + text[1:]
+
+
+def _build_category_lookup(target_list) -> dict[str, str]:
+    """
+    Byg {normaliseret_navn: kategori} mapping fra alle items på listen
+    (både krydsede og ukrydsede). Ved konflikt (samme navn → flere
+    kategorier historisk) vælges den hyppigste.
+
+    Vi udnytter at AnyList-listen er "lærings-data" — varer brugeren før
+    har tilføjet bærer den kategori klienten valgte dengang.
+    """
+    by_name: dict[str, Counter] = defaultdict(Counter)
+    for item in getattr(target_list, "items", []) or []:
+        name = (getattr(item, "name", "") or "").strip().lower()
+        category = (getattr(item, "category", None) or "").strip()
+        if name and category:
+            by_name[name][category] += 1
+    return {name: counter.most_common(1)[0][0] for name, counter in by_name.items()}
 
 
 def main() -> int:
@@ -167,23 +193,34 @@ def main() -> int:
             )
         return 1
 
-    list_id = _find_list_id(client, list_name)
-    if list_id is None:
+    target_list = _find_list(client, list_name)
+    if target_list is None:
         print(f"FEJL: AnyList-listen '{list_name}' findes ikke.", file=sys.stderr)
         return 1
+    list_id = target_list.id
+
+    # 4b. Byg kategori-lookup fra brugerens egen historik på listen.
+    # AnyList's egen auto-kategorisering er klient-side og trigges ikke via API,
+    # så vi imiterer den ved at slå op i tidligere tilføjede items.
+    category_lookup = _build_category_lookup(target_list)
 
     # 5. Sync hver item, slet i Keep efter succes
-    added: list[str] = []
+    added: list[tuple[str, Optional[str]]] = []
     failed: list[tuple[str, str]] = []
 
     for text, item in pending:
+        display_name = _capitalize_first(text)
+        category = category_lookup.get(text.lower())
         try:
-            client.add_item_with_details(list_id, text)
+            if category:
+                client.add_item_with_details(list_id, display_name, category=category)
+            else:
+                client.add_item_with_details(list_id, display_name)
             item.delete()
-            added.append(text)
+            added.append((display_name, category))
         except Exception as e:
             # Lad item ligge i Keep, prøv igen næste run
-            failed.append((text, str(e)))
+            failed.append((display_name, str(e)))
 
     # 6. Commit Keep-deletions
     if added:
@@ -195,9 +232,13 @@ def main() -> int:
             # Næste run vil se dem som "ukrydsede" igen og duplikere → log som warning.
 
     # 7. Summary (uden secrets)
-    print(f"Synket {len(added)} item(s) fra Keep '{note_title}' til AnyList '{list_name}'.")
-    for name in added:
-        print(f"  + {name}")
+    print(
+        f"Synket {len(added)} item(s) fra Keep '{note_title}' til AnyList "
+        f"'{list_name}' (kategori-lookup havde {len(category_lookup)} entries)."
+    )
+    for name, category in added:
+        suffix = f" → {category}" if category else " (ingen kategori — ny vare)"
+        print(f"  + {name}{suffix}")
     if failed:
         print(f"\n{len(failed)} item(s) fejlede:", file=sys.stderr)
         for name, err in failed:
